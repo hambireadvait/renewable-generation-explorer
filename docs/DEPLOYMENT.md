@@ -5,7 +5,25 @@ The app is a single Python service: FastAPI serves the JSON API (`/api/*`), the 
 browser calls the API with relative URLs (`/api/...`), so nothing depends on `localhost` and no API
 base URL has to be configured.
 
-Nothing has been deployed. These files are ready for when you choose a host.
+**Live:** https://renewable-generation-explorer.onrender.com (Render, free plan, Singapore, Docker),
+deployed from https://github.com/hambireadvait/renewable-generation-explorer (`main`, auto-deploy on push).
+
+## Updating the live site
+
+```bash
+cd ~/Desktop/renewable-feasibility
+git add -A && git commit -m "Describe the change"
+git push            # Render rebuilds and redeploys automatically (~2–8 min); watch it in the Render dashboard
+```
+
+## Open-Meteo quota on shared hosting
+
+Render's free instances share outbound IPs, and Open-Meteo's free forecast quota is per IP, so the
+server's forecast calls can be refused ("Daily API request limit exceeded"). The API then returns
+`code: "rate_limited"` and the frontend falls back automatically: the visitor's browser fetches the forecast
+from Open-Meteo itself (request supplied by `POST /api/forecast/browser-request`, never containing a key) and
+posts it to `POST /api/forecast/from-browser`, which validates it and runs the same models. Long-term data,
+geocoding and NASA POWER are unaffected. A paid `OPEN_METEO_API_KEY` removes the server-side limit.
 
 ## Commands
 

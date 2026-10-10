@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Renewable Generation Explorer — solar &amp; wind generation forecasts</title>
+  <meta name="description" content="Forecast how much energy a solar PV or wind installation will generate this week, and compare it with long-term averages from historical weather.">
+  <meta name="theme-color" content="#09090B">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" crossorigin="" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" crossorigin="" defer></script>
+  <script type="module" src="/static/js/app.js"></script>
+</head>
+<body>
+<a class="skip-link" href="#content">Skip to content</a>
+
+<!-- ======================================================= LANDING -->
+<div id="view-landing" class="view landing" hidden>
+  <header class="site-nav">
+    <div class="container site-nav-inner">
+      <a href="#/" class="brand" aria-label="Renewable Generation Explorer — home">
+        <img src="/static/favicon.svg" alt="" width="28" height="28">
+        <span class="brand-name">Renewable <span>Generation Explorer</span></span>
+      </a>
+      <nav class="site-links" aria-label="Site">
+        <a href="#features">Product</a>
+        <a href="#how">How it works</a>
+        <a href="#sources">Data</a>
+        <a href="/docs" target="_blank" rel="noopener">API</a>
+      </nav>
+      <a href="#/forecast" class="btn btn-primary btn-sm">Open app <i data-icon="arrow-right" data-size="14"></i></a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container hero-grid">
+        <div class="hero-copy reveal">
+          <span class="eyebrow"><span class="dot live"></span>Live weather forecasts · NASA POWER &amp; ERA5 history</span>
+          <h1>Know how much energy your site will generate this week.</h1>
+          <p class="lead">Forecast solar PV and wind output for any location or region from the latest weather models — and see how it compares with the long-term average, with every assumption and data source in view.</p>
+          <div class="hero-ctas">
+            <a href="#/forecast" class="btn btn-primary btn-lg">Start a forecast <i data-icon="arrow-right" data-size="16"></i></a>
+            <a href="#/method" class="btn btn-secondary btn-lg"><i data-icon="book-open" data-size="16"></i> How it's calculated</a>
+          </div>
+          <ul class="hero-points">
+            <li><i data-icon="check" data-size="14"></i> No sign-up, no API keys</li>
+            <li><i data-icon="check" data-size="14"></i> pvlib solar physics</li>
+            <li><i data-icon="check" data-size="14"></i> HTML &amp; CSV exports</li>
+          </ul>
+        </div>
+        <div class="hero-preview reveal" style="--delay:120ms">
+          <div class="preview-card" id="hero-preview" aria-live="polite">
+            <div class="preview-head">
+              <div>
+                <p class="preview-kicker">Live preview</p>
+                <p class="preview-title">Jaisalmer, Rajasthan · next 7 days</p>
+              </div>
+              <span class="badge badge-neutral" id="hero-preview-badge">Loading…</span>
+            </div>
+            <div class="preview-body">
+              <div class="sk sk-line w40"></div>
+              <div class="sk sk-line w60 tall"></div>
+              <div class="sk sk-chart short"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="features">
+      <div class="container">
+        <div class="section-head reveal">
+          <p class="eyebrow-text">Product</p>
+          <h2>Generation estimates you can explain</h2>
+          <p>Two clearly separated views, the same transparent physics underneath.</p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature reveal">
+            <span class="feature-icon tone-accent"><i data-icon="calendar-range" data-size="18"></i></span>
+            <h3>This week's forecast</h3>
+            <p>Hour-by-hour and daily energy for the next 1–16 days from the latest Open-Meteo weather forecast, with best and lowest days and peak output.</p>
+          </article>
+          <article class="feature reveal" style="--delay:60ms">
+            <span class="feature-icon tone-cyan"><i data-icon="history" data-size="18"></i></span>
+            <h3>Long-term average</h3>
+            <p>Typical daily, monthly and yearly generation from whole years of NASA POWER or ERA5 history, including year-to-year spread.</p>
+          </article>
+          <article class="feature reveal" style="--delay:120ms">
+            <span class="feature-icon tone-solar"><i data-icon="scan" data-size="18"></i></span>
+            <h3>Points, regions &amp; hybrids</h3>
+            <p>Search a place or draw a region on the map. Model solar, wind or both, with an optional grid-export limit and reported curtailment.</p>
+          </article>
+          <article class="feature reveal" style="--delay:180ms">
+            <span class="feature-icon tone-success"><i data-icon="file-text" data-size="18"></i></span>
+            <h3>Transparent by default</h3>
+            <p>Every result shows its data source, retrieval time, assumptions and limitations — and exports to an HTML report or CSV.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="how">
+      <div class="container">
+        <div class="section-head reveal">
+          <p class="eyebrow-text">How it works</p>
+          <h2>From a place on the map to a weekly total in three steps</h2>
+        </div>
+        <ol class="steps">
+          <li class="step reveal"><span class="step-n">1</span><div><h3>Pick a place or region</h3><p>Search by name, enter coordinates, click the map or draw a rectangle.</p></div></li>
+          <li class="step reveal" style="--delay:60ms"><span class="step-n">2</span><div><h3>Describe what's installed</h3><p>Solar capacity, tilt and losses; turbine rating, hub height and power curve.</p></div></li>
+          <li class="step reveal" style="--delay:120ms"><span class="step-n">3</span><div><h3>Get the forecast</h3><p>Weather is run through pvlib and a wind power-curve model, hour by hour.</p></div></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section" id="sources">
+      <div class="container">
+        <div class="section-head reveal">
+          <p class="eyebrow-text">Data</p>
+          <h2>Built on open, citable data</h2>
+          <p>Sources are listed by the running server — the same metadata attached to every result.</p>
+        </div>
+        <div class="source-grid" id="landing-sources">
+          <div class="source-tile sk-tile"></div><div class="source-tile sk-tile"></div><div class="source-tile sk-tile"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="cta-band reveal">
+          <div>
+            <h2>See this week's generation for your site</h2>
+            <p>Energy estimates only — no costs or financial modelling, and no checks of land, permits or grid access.</p>
+          </div>
+          <a href="#/forecast" class="btn btn-primary btn-lg">Start a forecast <i data-icon="arrow-right" data-size="16"></i></a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container site-footer-inner">
+      <div class="brand small"><img src="/static/favicon.svg" alt="" width="20" height="20"><span>Renewable Generation Explorer</span></div>
+      <p class="muted small">Weather data by Open-Meteo.com (CC BY 4.0) and NASA POWER. Map © OpenStreetMap contributors.</p>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="#/forecast">App</a><a href="#/method">Method</a><a href="/docs" target="_blank" rel="noopener">API docs</a>
+      </nav>
+    </div>
+  </footer>
+</div>
+
+<!-- ======================================================= APP -->
+<div id="view-app" class="view app" hidden>
+  <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+    <div class="sidebar-top">
+      <a href="#/" class="brand" aria-label="Renewable Generation Explorer — home">
+        <img src="/static/favicon.svg" alt="" width="28" height="28">
+        <span class="brand-name">Renewable <span>Generation Explorer</span></span>
+      </a>
+      <button class="icon-btn sidebar-close" type="button" id="sidebar-close" aria-label="Close navigation"><i data-icon="x" data-size="18"></i></button>
+    </div>
+    <nav class="side-nav">
+      <p class="side-label">Generation</p>
+      <a href="#/forecast" data-route="forecast" data-tip-side="right" aria-label="This week's forecast"><i data-icon="calendar-range" data-size="17"></i><span>This week's forecast</span></a>
+      <a href="#/long-term" data-route="longterm" aria-label="Long-term average"><i data-icon="history" data-size="17"></i><span>Long-term average</span></a>
+      <p class="side-label">Workspace</p>
+      <a href="#/compare" data-route="compare" aria-label="Compare scenarios"><i data-icon="git-compare-arrows" data-size="17"></i><span>Compare</span><span class="count" id="scenario-count">0</span></a>
+      <a href="#/method" data-route="method" aria-label="Data and method"><i data-icon="book-open" data-size="17"></i><span>Data &amp; method</span></a>
+      <a href="/docs" target="_blank" rel="noopener" aria-label="API documentation (opens in a new tab)"><i data-icon="braces" data-size="17"></i><span>API docs</span><i data-icon="external-link" data-size="13" class="ext"></i></a>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="status-card" id="status-card">
+        <span class="dot live"></span>
+        <div><p class="status-title">Live data</p><p class="status-sub" id="status-sub">Connecting…</p></div>
+      </div>
+      <button class="icon-btn collapse-btn" type="button" id="collapse-btn" aria-label="Collapse sidebar"><i data-icon="panel-left-close" data-size="17"></i></button>
+    </div>
+  </aside>
+  <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+
+  <div class="app-main">
+    <header class="app-header">
+      <button class="icon-btn menu-btn" type="button" id="menu-btn" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false"><i data-icon="menu" data-size="18"></i></button>
+      <div class="page-titles">
+        <h1 id="page-title">This week's forecast</h1>
+        <p id="page-sub" class="muted">How much energy the site will generate, from the latest weather forecast</p>
+      </div>
+      <div class="header-actions" id="header-actions"></div>
+    </header>
+
+    <div class="workspace" id="content" tabindex="-1">
+      <!-- ---------- configuration panel (forecast + long-term) ---------- -->
+      <aside class="config" id="config" aria-label="Site and system">
+        <button type="button" class="config-toggle" id="config-toggle" aria-expanded="true" aria-controls="form">
+          <span class="ct-icon"><i data-icon="sliders-horizontal" data-size="16"></i></span>
+          <span class="ct-text"><b>Site &amp; system</b><span id="config-summary"></span></span>
+          <span class="ct-action"><span id="config-toggle-label">Hide</span><i data-icon="chevron-down" data-size="15" class="chev"></i></span>
+        </button>
+        <form id="form" novalidate>
+          <section class="cfg-section">
+            <header class="cfg-head"><span class="cfg-title"><i data-icon="map-pin" data-size="15"></i> Location</span></header>
+            <div class="cfg-body">
+              <div class="field search">
+                <label class="field-label" for="place">Search a place</label>
+                <div class="input-wrap has-prefix">
+                  <span class="prefix"><i data-icon="search" data-size="15"></i></span>
+                  <input id="place" type="search" autocomplete="off" placeholder="Jaisalmer, Bhuj, Tirunelveli…" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="place-results">
+                </div>
+                <ul id="place-results" class="listbox" role="listbox" hidden></ul>
+              </div>
+              <div class="grid-2">
+                <div class="field"><label class="field-label" for="f-lat">Latitude</label>
+                  <div class="input-wrap"><input id="f-lat" data-path="location.latitude" data-type="number" data-min="-90" data-max="90" required inputmode="decimal"><span class="suffix">°</span></div></div>
+                <div class="field"><label class="field-label" for="f-lon">Longitude</label>
+                  <div class="input-wrap"><input id="f-lon" data-path="location.longitude" data-type="number" data-min="-180" data-max="180" required inputmode="decimal"><span class="suffix">°</span></div></div>
+              </div>
+              <div class="map-wrap">
+                <div id="map" class="map" role="application" aria-label="Map. Click to place a point, or use Draw region."></div>
+                <div class="map-tools">
+                  <button type="button" id="draw-area" class="btn btn-secondary btn-xs" aria-pressed="false"><i data-icon="scan" data-size="13"></i> Draw region</button>
+                  <button type="button" id="clear-area" class="btn btn-ghost btn-xs" hidden><i data-icon="eraser" data-size="13"></i> Clear</button>
+                </div>
+              </div>
+              <p class="hint" id="area-info">Click the map to set a point, or draw a rectangle for a region (weather is taken at its centre).</p>
+            </div>
+          </section>
+
+          <section class="cfg-section" id="solar-section">
+            <header class="cfg-head">
+              <span class="cfg-title"><i data-icon="sun" data-size="15" class="tone-solar"></i> Solar PV</span>
+              <label class="switch"><input type="checkbox" id="use-solar" checked><span class="switch-ui" aria-hidden="true"></span><span class="sr-only">Include solar PV</span></label>
+            </header>
+            <fieldset class="cfg-body" id="solar-fields">
+              <legend class="sr-only">Solar PV system</legend>
+              <div class="grid-2">
+                <div class="field"><label class="field-label" for="f-skwp">DC capacity</label>
+                  <div class="input-wrap"><input id="f-skwp" data-path="solar.capacity_kwp" data-type="number" data-xmin="0" data-max="2000000" required inputmode="decimal"><span class="suffix">kWp</span></div></div>
+                <div class="field"><label class="field-label" for="f-mount">Mounting</label>
+                  <div class="select-wrap"><select id="f-mount" data-path="solar.mounting" data-type="text">
+                    <option value="fixed_open_rack">Fixed · ground</option>
+                    <option value="fixed_roof_mount">Fixed · roof</option>
+                    <option value="single_axis">Single-axis tracker</option>
+                  </select><i data-icon="chevron-down" data-size="14" class="select-chevron"></i></div></div>
+                <div class="field"><label class="field-label" for="f-tilt">Tilt <button type="button" class="tip" data-tip="Leave blank to use |latitude| (max 40°). Ignored for trackers." aria-label="About tilt">?</button></label>
+                  <div class="input-wrap"><input id="f-tilt" data-path="solar.tilt_deg" data-type="number" data-min="0" data-max="90" placeholder="auto" inputmode="decimal"><span class="suffix">°</span></div></div>
+                <div class="field"><label class="field-label" for="f-az">Azimuth <button type="button" class="tip" data-tip="Direction the panels face: 180° = south, 90° = east. Blank = facing the equator." aria-label="About azimuth">?</button></label>
+                  <div class="input-wrap"><input id="f-az" data-path="solar.azimuth_deg" data-type="number" data-min="0" data-max="359.9" placeholder="auto" inputmode="decimal"><span class="suffix">°</span></div></div>
+              </div>
+              <details class="advanced">
+                <summary><i data-icon="sliders-horizontal" data-size="14"></i> Advanced <span class="muted" id="solar-loss-total"></span><i data-icon="chevron-down" data-size="14" class="chev"></i></summary>
+                <div class="grid-2">
+                  <div class="field"><label class="field-label" for="f-dcac">DC/AC ratio <button type="button" class="tip" data-tip="Panel DC capacity ÷ inverter AC capacity. Above 1 means some clipping at peak sun." aria-label="About DC/AC ratio">?</button></label>
+                    <div class="input-wrap"><input id="f-dcac" data-path="solar.dc_ac_ratio" data-type="number" data-min="0.8" data-max="2" step="0.05" inputmode="decimal"></div></div>
+                  <div class="field"><label class="field-label" for="f-inv">Inverter efficiency</label>
+                    <div class="input-wrap"><input id="f-inv" data-path="solar.inverter_efficiency_pct" data-type="number" data-min="80" data-max="99.5" inputmode="decimal"><span class="suffix">%</span></div></div>
+                  <div class="field"><label class="field-label" for="f-tc">Temp. coefficient <button type="button" class="tip" data-tip="Power change per °C of cell temperature above 25 °C. About −0.35 %/°C for modern silicon." aria-label="About temperature coefficient">?</button></label>
+                    <div class="input-wrap"><input id="f-tc" data-path="solar.temp_coeff_pct_per_c" data-type="number" data-min="-0.6" data-max="0" step="0.01" inputmode="decimal"><span class="suffix">%/°C</span></div></div>
+                  <div class="field"><label class="field-label" for="f-alb">Ground albedo <button type="button" class="tip" data-tip="Share of sunlight the ground reflects: grass ≈ 0.2, sand ≈ 0.3, snow ≈ 0.8." aria-label="About albedo">?</button></label>
+                    <div class="input-wrap"><input id="f-alb" data-path="solar.albedo" data-type="number" data-min="0" data-max="0.9" step="0.05" inputmode="decimal"></div></div>
+                </div>
+                <p class="sub-label">System losses</p>
+                <div class="grid-3" id="solar-losses"></div>
+              </details>
+            </fieldset>
+          </section>
+
+          <section class="cfg-section" id="wind-section">
+            <header class="cfg-head">
+              <span class="cfg-title"><i data-icon="wind" data-size="15" class="tone-cyan"></i> Wind</span>
+              <label class="switch"><input type="checkbox" id="use-wind" checked><span class="switch-ui" aria-hidden="true"></span><span class="sr-only">Include wind</span></label>
+            </header>
+            <fieldset class="cfg-body" id="wind-fields">
+              <legend class="sr-only">Wind turbines</legend>
+              <div class="grid-2">
+                <div class="field"><label class="field-label" for="f-wkw">Rated power / turbine</label>
+                  <div class="input-wrap"><input id="f-wkw" data-path="wind.turbine_rated_kw" data-type="number" data-xmin="0" data-max="20000" required inputmode="decimal"><span class="suffix">kW</span></div></div>
+                <div class="field"><label class="field-label" for="f-wn">Turbines</label>
+                  <div class="input-wrap"><input id="f-wn" data-path="wind.n_turbines" data-type="int" data-min="1" data-max="1000" inputmode="numeric"></div></div>
+                <div class="field"><label class="field-label" for="f-hub">Hub height <button type="button" class="tip" data-tip="Height of the rotor centre. Wind is interpolated or extrapolated to this height from the data's levels." aria-label="About hub height">?</button></label>
+                  <div class="input-wrap"><input id="f-hub" data-path="wind.hub_height_m" data-type="number" data-min="10" data-max="250" inputmode="decimal"><span class="suffix">m</span></div></div>
+                <div class="field"><label class="field-label" for="f-rot">Rotor diameter <span class="opt">optional</span></label>
+                  <div class="input-wrap"><input id="f-rot" data-path="wind.rotor_diameter_m" data-type="number" data-xmin="1" data-max="300" inputmode="decimal"><span class="suffix">m</span></div></div>
+              </div>
+              <label class="check"><input type="checkbox" id="use-curve"><span>Use manufacturer power curve</span></label>
+              <div id="curve-box" class="field" hidden>
+                <label class="field-label" for="power-curve">Power curve — “wind speed m/s, power kW” per line</label>
+                <textarea id="power-curve" rows="6" placeholder="3, 0&#10;4, 120&#10;5, 300&#10;…&#10;25, 3000"></textarea>
+                <p class="field-error" data-error-for="wind.power_curve"></p>
+              </div>
+              <div id="generic-curve">
+                <div class="grid-3">
+                  <div class="field"><label class="field-label" for="f-ci">Cut-in</label>
+                    <div class="input-wrap"><input id="f-ci" data-path="wind.cut_in_ms" data-type="number" data-xmin="0" data-max="10" inputmode="decimal"><span class="suffix">m/s</span></div></div>
+                  <div class="field"><label class="field-label" for="f-rs">Rated</label>
+                    <div class="input-wrap"><input id="f-rs" data-path="wind.rated_speed_ms" data-type="number" data-xmin="0" data-max="25" inputmode="decimal"><span class="suffix">m/s</span></div></div>
+                  <div class="field"><label class="field-label" for="f-co">Cut-out</label>
+                    <div class="input-wrap"><input id="f-co" data-path="wind.cut_out_ms" data-type="number" data-xmin="0" data-max="40" inputmode="decimal"><span class="suffix">m/s</span></div></div>
+                </div>
+                <p class="note note-warn"><i data-icon="triangle-alert" data-size="13"></i> Generic idealised curve — real turbines can differ ±10–25 %.</p>
+              </div>
+              <details class="advanced">
+                <summary><i data-icon="sliders-horizontal" data-size="14"></i> Advanced <span class="muted" id="wind-loss-total"></span><i data-icon="chevron-down" data-size="14" class="chev"></i></summary>
+                <label class="check"><input type="checkbox" data-path="wind.air_density_correction" data-type="bool"><span>Air-density correction (IEC 61400-12-1)</span></label>
+                <p class="sub-label">Losses</p>
+                <div class="grid-3" id="wind-losses"></div>
+              </details>
+            </fieldset>
+          </section>
+
+          <section class="cfg-section" id="hybrid-fields">
+            <header class="cfg-head">
+              <span class="cfg-title"><i data-icon="zap" data-size="15" class="tone-accent"></i> Combined output</span>
+              <label class="switch"><input type="checkbox" id="use-hybrid" checked><span class="switch-ui" aria-hidden="true"></span><span class="sr-only">Show combined solar and wind output</span></label>
+            </header>
+            <div class="cfg-body">
+              <div class="field"><label class="field-label" for="f-lim">Grid export limit <span class="opt">optional</span> <button type="button" class="tip" data-tip="Shared connection limit. Combined output above it is curtailed and reported." aria-label="About export limit">?</button></label>
+                <div class="input-wrap"><input id="f-lim" data-path="hybrid.export_limit_kw" data-type="number" data-xmin="0" placeholder="no limit" inputmode="decimal"><span class="suffix">kW</span></div></div>
+            </div>
+          </section>
+
+          <div class="config-footer">
+            <p id="form-error" class="field-error" role="alert"></p>
+            <button type="submit" id="run" class="btn btn-primary btn-block btn-lg"><i data-icon="play" data-size="15"></i><span>Run forecast</span><kbd class="kbd">⌘↵</kbd></button>
+          </div>
+        </form>
+      </aside>
+
+      <!-- ---------- pages ---------- -->
+      <section class="content">
+        <section class="page" data-page="forecast" aria-labelledby="page-title">
+          <div class="toolbar">
+            <div class="toolbar-group">
+              <span class="toolbar-label" id="win-label">Window</span>
+              <div class="segmented" role="radiogroup" aria-labelledby="win-label">
+                <label><input type="radio" name="forecast-days" value="1"><span>24 h</span></label>
+                <label><input type="radio" name="forecast-days" value="3"><span>3 days</span></label>
+                <label><input type="radio" name="forecast-days" value="7" checked><span>7 days</span></label>
+                <label><input type="radio" name="forecast-days" value="10"><span>10 days</span></label>
+                <label><input type="radio" name="forecast-days" value="16"><span>16 days</span></label>
+              </div>
+            </div>
+            <div class="toolbar-group">
+              <label class="toolbar-label" for="forecast-provider">Source</label>
+              <div class="select-wrap compact"><select id="forecast-provider">
+                <option value="open_meteo_forecast">Open-Meteo forecast</option>
+                <option value="demo">Demo — synthetic</option>
+              </select><i data-icon="chevron-down" data-size="14" class="select-chevron"></i></div>
+            </div>
+          </div>
+          <div class="results" id="fc-results"></div>
+        </section>
+
+        <section class="page" data-page="longterm" aria-labelledby="page-title" hidden>
+          <div class="toolbar">
+            <div class="toolbar-group">
+              <label class="toolbar-label" for="provider">Source</label>
+              <div class="select-wrap compact"><select id="provider" data-path="provider" data-type="text"></select><i data-icon="chevron-down" data-size="14" class="select-chevron"></i></div>
+            </div>
+            <div class="toolbar-group">
+              <label class="toolbar-label" for="start-year">Years</label>
+              <div class="select-wrap compact"><select id="start-year" data-path="start_year" data-type="int" aria-label="Start year"></select><i data-icon="chevron-down" data-size="14" class="select-chevron"></i></div>
+              <span class="muted">to</span>
+              <div class="select-wrap compact"><select id="end-year" data-path="end_year" data-type="int" aria-label="End year"></select><i data-icon="chevron-down" data-size="14" class="select-chevron"></i></div>
+            </div>
+            <p class="toolbar-note" id="provider-note"></p>
+            <p class="field-error" data-error-for="years"></p>
+          </div>
+          <div class="results" id="lt-results"></div>
+        </section>
+
+        <section class="page" data-page="compare" aria-labelledby="page-title" hidden>
+          <div id="compare"></div>
+        </section>
+
+        <section class="page" data-page="method" aria-labelledby="page-title" hidden>
+          <div id="sources"></div>
+        </section>
+      </section>
+    </div>
+  </div>
+</div>
+
+<noscript><p style="padding:24px;color:#FAFAFA;background:#09090B">This app needs JavaScript to run.</p></noscript>
+</body>
+</html>

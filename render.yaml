@@ -1,0 +1,17 @@
+# Render Blueprint (https://render.com/docs/blueprint-spec) — one Docker web service, HTTPS by default.
+services:
+  - type: web
+    name: renewable-generation-explorer
+    runtime: docker
+    plan: free            # free: 512 MB, sleeps after 15 min idle (~1 min cold start). "starter" stays awake.
+    region: singapore     # closest Render region to India
+    healthCheckPath: /api/health
+    autoDeploy: true      # every push to the default branch redeploys
+    envVars:
+      - key: WEB_CONCURRENCY
+        value: "1"        # one worker ≈ 230 MB; keep at 1 on the free 512 MB plan
+      - key: HTTP_USER_AGENT
+        value: "renewable-generation-explorer/0.1 (+https://render.com)"
+      # Only needed for commercial use of Open-Meteo (the free tier is non-commercial). Set in the dashboard.
+      - key: OPEN_METEO_API_KEY
+        sync: false

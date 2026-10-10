@@ -1,0 +1,10 @@
+# Pinned to the versions tested locally (all ship manylinux wheels for Python 3.12).
+fastapi==0.143.0
+uvicorn[standard]==0.54.0
+httpx==0.28.1
+pydantic==2.14.0
+pvlib==0.16.1
+pandas==3.0.6
+numpy==2.5.3
+scipy==1.18.1
+timezonefinder==9.0.0

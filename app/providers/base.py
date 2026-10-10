@@ -134,7 +134,7 @@ class HttpClient:
             raise ProviderError(f"Could not reach {provider}: {exc.__class__.__name__}.",
                                 provider=provider, status=502) from exc
         if resp.status_code == 429:
-            raise ProviderError(f"{provider} rate limit reached (HTTP 429). Try again later.",
+            raise ProviderError(f"{provider} rate limit reached (HTTP 429: {_error_detail(resp)}). Try again later.",
                                 provider=provider, status=503)
         if resp.status_code >= 400:
             detail = _error_detail(resp)

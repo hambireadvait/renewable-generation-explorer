@@ -19,7 +19,9 @@ from app.models.solar import DEFAULT_LOSSES_PCT as SOLAR_LOSSES
 from app.models.wind import DEFAULT_LOSSES_PCT as WIND_LOSSES
 from app.providers.base import ProviderError
 from app.providers.registry import DEFAULT_FORECAST, DEFAULT_HISTORICAL, Registry, build_registry
-from app.schemas import AssessRequest, ForecastRequest, _default_years
+import datetime as dt
+
+from app.schemas import AssessRequest, BrowserForecastRequest, ForecastRequest, _default_years
 from app.service import Computed, assess, forecast
 
 app = FastAPI(
@@ -80,7 +82,8 @@ _memo = _Memo()
 @app.exception_handler(ProviderError)
 async def _provider_error(_: Request, exc: ProviderError):
     return JSONResponse(status_code=exc.status, content={"error": {
-        "type": "provider_error", "provider": exc.provider, "message": exc.message, "retryable": exc.retryable,
+        "type": "provider_error", "code": exc.code, "provider": exc.provider, "message": exc.message,
+        "retryable": exc.retryable,
         "hint": "You can retry, choose another data source, or run in clearly-labelled demo mode.",
     }})
 
@@ -156,6 +159,35 @@ def api_assess(req: AssessRequest, request: Request):
 @app.post("/api/forecast")
 def api_forecast(req: ForecastRequest, request: Request):
     return _computed_forecast(req, request).payload
+
+
+@app.post("/api/forecast/browser-request")
+def api_forecast_browser_request(req: ForecastRequest, request: Request):
+    """Fallback when the server's free Open-Meteo quota is exhausted (shared hosting IPs): returns the exact
+    request the visitor's browser should send to Open-Meteo itself. Never includes the API key."""
+    provider = get_registry(request).forecast["open_meteo_forecast"]
+    return provider.browser_request(req.location.latitude, req.location.longitude, req.days)
+
+
+@app.post("/api/forecast/from-browser")
+def api_forecast_from_browser(body: BrowserForecastRequest, request: Request,
+                              output: Literal["json", "report", "csv"] = "json"):
+    """Model a forecast that the visitor's browser fetched from Open-Meteo (same parsing, validation and models)."""
+    req = body.request
+    provider = get_registry(request).forecast["open_meteo_forecast"]
+    weather = provider.series_from_body(
+        body.weather.model_dump(), req.location.latitude, req.location.longitude, req.days,
+        retrieved_at=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), from_cache=False,
+        request_url="(fetched by the visitor's browser from api.open-meteo.com)", fetched_by="browser",
+    )
+    computed = forecast(req, get_registry(request), weather=weather)
+    if output == "report":
+        return HTMLResponse(report.render_forecast_html(computed.payload),
+                            headers={"Content-Disposition": 'attachment; filename="generation-forecast.html"'})
+    if output == "csv":
+        return PlainTextResponse(report.csv_hourly(computed.payload, computed.hourly), media_type="text/csv",
+                                 headers={"Content-Disposition": 'attachment; filename="forecast-hourly.csv"'})
+    return computed.payload
 
 
 @app.post("/api/forecast/report", response_class=HTMLResponse)

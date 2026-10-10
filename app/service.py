@@ -183,11 +183,15 @@ def assess(req: AssessRequest, registry: Registry) -> Computed:
     return Computed(payload=payload, hourly=hourly)
 
 
-def forecast(req: ForecastRequest, registry: Registry) -> Computed:
-    """Near-term generation for the forecast window (default: the next 7 days)."""
-    provider = registry.forecast[req.provider]
+def forecast(req: ForecastRequest, registry: Registry, weather: WeatherSeries | None = None) -> Computed:
+    """Near-term generation for the forecast window (default: the next 7 days).
+
+    `weather` may be supplied already parsed (forecast fetched by the visitor's browser when the
+    server's Open-Meteo quota is exhausted); otherwise the server fetches it.
+    """
     loc = req.location
-    weather = provider.fetch_forecast(loc.latitude, loc.longitude, req.days)
+    if weather is None:
+        weather = registry.forecast[req.provider].fetch_forecast(loc.latitude, loc.longitude, req.days)
     tz = local_timezone(loc.latitude, loc.longitude)
     zone = ZoneInfo(tz)
     warnings = _common_warnings(weather, loc.latitude)
@@ -271,6 +275,7 @@ def forecast(req: ForecastRequest, registry: Registry) -> Computed:
     payload = {
         "use_case": "near_term_forecast",
         "label": f"Generation forecast for the next {req.days} day{'s' if req.days != 1 else ''}",
+        "fetched_by": weather.extra.get("fetched_by", "server"),
         "is_demo": weather.source.is_demo,
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "app_version": __version__,

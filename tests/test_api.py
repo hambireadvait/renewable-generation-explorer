@@ -176,3 +176,68 @@ def test_static_shell_headers_and_compression(api):
     assert fav.status_code == 308 and fav.headers["location"] == "/static/favicon.svg"
     big = api.post("/api/assess", json=body(), headers={"Accept-Encoding": "gzip"})
     assert big.headers.get("content-encoding") == "gzip"
+
+
+def _om_forecast_body(lat=20.0, lon=78.0, days=3):
+    import numpy as np
+    import pandas as pd
+
+    idx = pd.date_range(pd.Timestamp.now(tz="UTC").floor("D"), periods=24 * (days + 1), freq="h")
+    hour = idx.hour.to_numpy()
+    ghi = np.clip(900 * np.sin((hour - 1) / 12 * np.pi), 0, None)  # daylight ≈ 01–13 UTC (India)
+    hourly = {"time": idx.strftime("%Y-%m-%dT%H:%M").tolist(), "shortwave_radiation": ghi.tolist(),
+              "direct_normal_irradiance": (ghi * 0.8).tolist(), "diffuse_radiation": (ghi * 0.2).tolist(),
+              "temperature_2m": [30.0] * len(idx), "surface_pressure": [1000.0] * len(idx)}
+    for h in (10, 80, 120, 180):
+        hourly[f"wind_speed_{h}m"] = [5.0 + h / 100] * len(idx)
+    return {"latitude": lat, "longitude": lon, "elevation": 300.0, "hourly": hourly}
+
+
+def test_rate_limit_error_has_code(settings):
+    def limited(req):
+        return httpx.Response(429, json={"error": True, "reason": "Daily API request limit exceeded."})
+
+    main.app.state.registry = build_registry(settings, transport=httpx.MockTransport(limited))
+    main._memo.data.clear()
+    try:
+        r = TestClient(main.app).post("/api/forecast", json=fbody(provider="open_meteo_forecast"))
+        e = r.json()["error"]
+        assert r.status_code == 503 and e["code"] == "rate_limited" and "Daily API request limit" in e["message"]
+    finally:
+        main.app.state.registry = None
+
+
+def test_browser_request_never_contains_api_key(api, settings, monkeypatch):
+    import dataclasses
+
+    main.app.state.registry = build_registry(dataclasses.replace(settings, open_meteo_api_key="secret-123"))
+    r = api.post("/api/forecast/browser-request", json=fbody(provider="open_meteo_forecast", days=7))
+    d = r.json()
+    assert r.status_code == 200 and d["url"] == "https://api.open-meteo.com/v1/forecast"
+    assert "apikey" not in d["params"] and "secret-123" not in r.text
+    assert d["params"]["forecast_days"] == 8 and d["params"]["wind_speed_unit"] == "ms"
+
+
+def test_forecast_from_browser_weather(api):
+    req = fbody(provider="open_meteo_forecast", days=2)
+    r = api.post("/api/forecast/from-browser", json={"request": req, "weather": _om_forecast_body(days=2)})
+    assert r.status_code == 200, r.text
+    p = r.json()
+    assert p["fetched_by"] == "browser" and not p["is_demo"]
+    assert "fetched by your browser" in p["source"]["dataset"]
+    assert p["forecast_period"]["hours"] <= 48 and p["results"]["solar"]["totals"]["energy_kwh"] >= 0
+    rep = api.post("/api/forecast/from-browser?output=report", json={"request": req, "weather": _om_forecast_body(days=2)})
+    assert rep.status_code == 200 and "Day by day" in rep.text
+    csv = api.post("/api/forecast/from-browser?output=csv", json={"request": req, "weather": _om_forecast_body(days=2)})
+    assert csv.status_code == 200 and "solar_kw" in csv.text
+
+
+def test_forecast_from_browser_rejects_bad_weather(api):
+    req = fbody(provider="open_meteo_forecast", days=2)
+    far = _om_forecast_body(lat=45.0)
+    assert api.post("/api/forecast/from-browser", json={"request": req, "weather": far}).status_code == 422
+    bad = _om_forecast_body()
+    bad["hourly"]["temperature_2m"] = bad["hourly"]["temperature_2m"][:-5]
+    assert api.post("/api/forecast/from-browser", json={"request": req, "weather": bad}).status_code == 422
+    demo = fbody(provider="demo")
+    assert api.post("/api/forecast/from-browser", json={"request": demo, "weather": _om_forecast_body()}).status_code == 422

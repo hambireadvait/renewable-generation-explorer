@@ -187,10 +187,10 @@ class OpenMeteoForecastProvider:
             "max_days": self.max_days,
         }
 
-    def fetch_forecast(self, lat: float, lon: float, days: int) -> WeatherSeries:
+    def forecast_params(self, lat: float, lon: float, days: int, *, with_key: bool = True) -> dict[str, Any]:
         if not 1 <= days <= self.max_days:
             raise ProviderError(f"Forecast days must be 1–{self.max_days}.", provider=self.name,
-                                status=422, retryable=False)
+                                status=422, retryable=False, code="bad_request")
         params: dict[str, Any] = {
             "latitude": round(lat, 4),
             "longitude": round(lon, 4),
@@ -201,34 +201,47 @@ class OpenMeteoForecastProvider:
             "wind_speed_unit": "ms",
             "timezone": "GMT",
         }
-        if self.settings.open_meteo_api_key:
+        if with_key and self.settings.open_meteo_api_key:
             params["apikey"] = self.settings.open_meteo_api_key
+        return params
+
+    def browser_request(self, lat: float, lon: float, days: int) -> dict[str, Any]:
+        """The exact free-tier request a visitor's browser can make itself (never includes the API key)."""
+        return {"url": "https://api.open-meteo.com/v1/forecast", "params": self.forecast_params(lat, lon, days, with_key=False)}
+
+    def fetch_forecast(self, lat: float, lon: float, days: int) -> WeatherSeries:
+        params = self.forecast_params(lat, lon, days)
         body, when, hit, url = self.http.get_json(
             self.settings.open_meteo_forecast_url, params, ttl_s=self.settings.ttl_forecast_s, provider=self.name
         )
+        return self.series_from_body(body, lat, lon, days, retrieved_at=when, from_cache=hit, request_url=url)
+
+    def series_from_body(self, body: dict[str, Any], lat: float, lon: float, days: int, *, retrieved_at: str,
+                         from_cache: bool, request_url: str, fetched_by: str = "server") -> WeatherSeries:
         df = _parse_hourly(body, self._wind_vars, self.name)
         # Drop heights the selected model does not provide for most of the window.
         heights = [h for h in self.wind_heights if df[f"wind_{h}m"].notna().mean() > 0.9]
         df = df.drop(columns=[f"wind_{h}m" for h in self.wind_heights if h not in heights])
         # Keep only hours from the start of the current hour of retrieval onward.
-        start = pd.Timestamp(when).floor("h")
+        start = pd.Timestamp(retrieved_at).floor("h")
         df = df.iloc[:-1]  # last row has no radiation after the shift
         df = df[(df.index >= start) & (df.index < start + pd.Timedelta(hours=24 * days))]
         if df.empty or 10 not in heights:
             raise ProviderError("Open-Meteo forecast returned no usable hours for this location.",
-                                provider=self.name)
+                                provider=self.name, status=422 if fetched_by == "browser" else 502)
         data, quality = fill_gaps(df)
         source = SourceInfo(
             provider_id=self.id,
             name=self.name,
-            dataset="Open-Meteo Forecast API (best_match)",
+            dataset="Open-Meteo Forecast API (best_match)"
+            + (" — fetched by your browser (server quota exhausted)" if fetched_by == "browser" else ""),
             docs_url="https://open-meteo.com/en/docs",
             license=LICENSE,
             attribution=ATTRIBUTION,
             resolution="Model-dependent",
-            retrieved_at=when,
-            from_cache=hit,
-            request_url=url,
+            retrieved_at=retrieved_at,
+            from_cache=from_cache,
+            request_url=request_url,
         )
         return WeatherSeries(
             data=data,
@@ -240,6 +253,7 @@ class OpenMeteoForecastProvider:
             quality=quality,
             extra={
                 "forecast_model": "best_match",
+                "fetched_by": fetched_by,
                 "forecast_start_utc": data.index[0].isoformat(),
                 "forecast_end_utc": (data.index[-1] + pd.Timedelta(hours=1)).isoformat(),
             },

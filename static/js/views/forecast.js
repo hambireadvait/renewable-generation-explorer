@@ -97,7 +97,7 @@ function renderResults(root, p) {
     <section class="run-banner">
       <div class="run-banner-main">
         <h2>${esc(p.label)} ${modeBadge(p)} ${badge(`model ${fp.model}`, "neutral")}</h2>
-        <p>${esc(localTime(fp.start_local))} → ${esc(localTime(fp.end_local))} local time · ${fp.hours} hours · ${esc(p.source.name)}</p>
+        <p>${esc(localTime(fp.start_local))} → ${esc(localTime(fp.end_local))} local time · ${fp.hours} hours · ${esc(p.source.name)}${p.fetched_by === "browser" ? " · fetched by your browser" : ""}</p>
         <div class="meta">${siteMeta(p)}</div>
       </div>
       <div class="run-actions">
@@ -142,10 +142,10 @@ function renderResults(root, p) {
   const req = state.last.forecast.request;
   wireSaveButton($('[data-act="save"]', root), "forecast");
   wireExportMenu($('[data-act="export"]', root), [
-    { label: "HTML report", icon: "file-text", run: () => api.forecastReport(req) },
+    { label: "HTML report", icon: "file-text", run: () => api.forecastReport(req, p) },
     { label: "Print / save as PDF", icon: "printer", print: true },
     { separator: true },
-    { label: "Hourly CSV", icon: "file-spreadsheet", run: () => api.forecastExport(req) },
+    { label: "Hourly CSV", icon: "file-spreadsheet", run: () => api.forecastExport(req, p) },
   ]);
 }
 

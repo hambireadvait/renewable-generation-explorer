@@ -156,3 +156,45 @@ class ForecastRequest(Strict):
         if self.solar is None and self.wind is None:
             raise ValueError("enable at least one technology (solar and/or wind)")
         return self
+
+
+class BrowserWeather(BaseModel):
+    """An Open-Meteo forecast response fetched by the visitor's browser (see /api/forecast/browser-request).
+
+    Only the fields the model needs are read; everything is re-validated and re-parsed server-side.
+    """
+    model_config = ConfigDict(extra="ignore")
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    elevation: float | None = None
+    hourly: dict[str, list[float | str | None]]
+
+    @field_validator("hourly")
+    @classmethod
+    def _shape(cls, v: dict[str, list]):
+        if "time" not in v:
+            raise ValueError("hourly.time is missing")
+        n = len(v["time"])
+        if not 24 <= n <= 17 * 24:
+            raise ValueError("hourly series must cover 1–17 days")
+        if any(len(col) != n for col in v.values()):
+            raise ValueError("all hourly series must have the same length")
+        for key, col in v.items():
+            if key != "time" and any(isinstance(x, str) for x in col):
+                raise ValueError(f"hourly.{key} must be numeric")
+        return v
+
+
+class BrowserForecastRequest(Strict):
+    request: ForecastRequest
+    weather: BrowserWeather
+
+    @model_validator(mode="after")
+    def _matches(self):
+        if self.request.provider != "open_meteo_forecast":
+            raise ValueError("browser-fetched weather is only accepted for the Open-Meteo forecast")
+        loc = self.request.location
+        # Open-Meteo snaps to its grid; anything further away means the data is for another place.
+        if abs(self.weather.latitude - loc.latitude) > 0.5 or abs(self.weather.longitude - loc.longitude) > 0.5:
+            raise ValueError("weather data is for a different location than the request")
+        return self

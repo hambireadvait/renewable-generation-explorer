@@ -29,12 +29,14 @@ IRRADIANCE_COLUMNS = ("ghi", "dni", "dhi")
 class ProviderError(Exception):
     """Raised for any upstream failure. `status` is the HTTP status we return to our client."""
 
-    def __init__(self, message: str, *, provider: str, status: int = 502, retryable: bool = True):
+    def __init__(self, message: str, *, provider: str, status: int = 502, retryable: bool = True,
+                 code: str = "upstream_error"):
         super().__init__(message)
         self.message = message
         self.provider = provider
         self.status = status
         self.retryable = retryable
+        self.code = code  # machine-readable: upstream_error | rate_limited | timeout | unreachable | bad_request
 
 
 @dataclass
@@ -135,7 +137,7 @@ class HttpClient:
                                 provider=provider, status=502) from exc
         if resp.status_code == 429:
             raise ProviderError(f"{provider} rate limit reached (HTTP 429: {_error_detail(resp)}). Try again later.",
-                                provider=provider, status=503)
+                                provider=provider, status=503, code="rate_limited")
         if resp.status_code >= 400:
             detail = _error_detail(resp)
             status = 422 if resp.status_code == 400 else 502
